@@ -1,0 +1,1353 @@
+openapi: 3.0.3
+info:
+  title: Netease Cloud Music API
+  description: |
+    Unofficial Netease Cloud Music API extracted from the Go implementation.
+    This API provides access to various Netease Cloud Music services including
+    search, songs, playlists, albums, artists, lyrics, and user management.
+
+    **Note**: This API requires encryption for requests. The CLI tool handles this automatically.
+
+    ## Disclaimer
+
+    **This project is for personal learning and research purposes only. Do not use for commercial or illegal purposes!**
+
+    **The author is not responsible for any account bans or other issues that may occur from using this tool.**
+
+    ## API Reference
+
+    The API interfaces are based on [chaunsin/netease-cloud-music](https://github.com/chaunsin/netease-cloud-music).
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://music.163.com
+    description: Main Netease Cloud Music server
+  - url: https://interface.music.163.com
+    description: Interface server for some APIs
+
+tags:
+  - name: search
+    description: Search operations
+  - name: song
+    description: Song related operations
+  - name: playlist
+    description: Playlist operations
+  - name: album
+    description: Album operations
+  - name: artist
+    description: Artist operations
+  - name: lyric
+    description: Lyrics operations
+  - name: user
+    description: User operations
+  - name: login
+    description: Authentication operations
+  - name: top
+    description: Top charts and rankings
+  - name: recommend
+    description: Recommendation operations
+
+paths:
+  /weapi/search/default/keyword/get:
+    post:
+      tags:
+        - search
+      summary: Get default search keywords
+      description: Returns the default search keywords shown in the search box
+      operationId: searchDefault
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchDefaultResponse'
+
+  /weapi/v3/song/detail:
+    post:
+      tags:
+        - song
+      summary: Get song details
+      description: Get detailed information about one or more songs by their IDs
+      operationId: getSongDetail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                c:
+                  type: string
+                  description: JSON array of song IDs with version, e.g. '[{"id":"1234","v":0}]'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongDetailResponse'
+
+  /weapi/song/music/detail/get:
+    post:
+      tags:
+        - song
+      summary: Get song music quality info
+      description: Get supported music quality information for a song
+      operationId: getSongMusicQuality
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                songId:
+                  type: string
+                  description: Song ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongMusicQualityResponse'
+
+  /weapi/song/enhance/player/url:
+    post:
+      tags:
+        - song
+      summary: Get song player URL
+      description: Get the streaming URL for songs. URLs expire after ~20 minutes.
+      operationId: getSongPlayerUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: string
+                  description: JSON array of song IDs, e.g. '[1234, 5678]'
+                br:
+                  type: string
+                  description: 'Bitrate: 128000, 320000, etc.'
+                  default: '320000'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongPlayerResponse'
+
+  /weapi/song/enhance/player/url/v1:
+    post:
+      tags:
+        - song
+      summary: Get song player URL (v1)
+      description: Get the streaming URL for songs with quality level support
+      operationId: getSongPlayerUrlV1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: string
+                  description: JSON array of song IDs
+                level:
+                  type: string
+                  description: 'Quality level: standard, higher, exhigh, lossless, hires, sky'
+                  enum: [standard, higher, exhigh, lossless, hires, sky]
+                encodeType:
+                  type: string
+                  description: 'Encoding type: mp3, aac, flac'
+                  default: 'mp3'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongPlayerV1Response'
+
+  /weapi/song/enhance/download/url:
+    post:
+      tags:
+        - song
+      summary: Get song download URL
+      description: Get download URL for a song
+      operationId: getSongDownloadUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Song ID
+                br:
+                  type: string
+                  description: Bitrate
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongDownloadUrlResponse'
+
+  /weapi/song/enhance/download/url/v1:
+    post:
+      tags:
+        - song
+      summary: Get song download URL (v1)
+      description: Get download URL for a song with quality level support
+      operationId: getSongDownloadUrlV1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Song ID
+                level:
+                  type: string
+                  description: 'Quality level: standard, higher, exhigh, lossless, hires'
+                  enum: [standard, higher, exhigh, lossless, hires]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongDownloadUrlV1Response'
+
+  /weapi/user/playlist/:
+    post:
+      tags:
+        - playlist
+      summary: Get user playlists
+      description: Get playlists for a user, including created and liked playlists
+      operationId: getUserPlaylists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uid:
+                  type: string
+                  description: User ID
+                offset:
+                  type: string
+                  description: Offset for pagination
+                  default: '0'
+                limit:
+                  type: string
+                  description: Number of playlists to return
+                  default: '1000'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaylistResponse'
+
+  /api/v6/playlist/detail:
+    post:
+      tags:
+        - playlist
+      summary: Get playlist details
+      description: Get detailed information about a playlist including tracks
+      operationId: getPlaylistDetail
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Playlist ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Playlist ID
+                n:
+                  type: string
+                  description: Unknown parameter, usually 0
+                  default: '0'
+                s:
+                  type: string
+                  description: Number of recent subscribers to return
+                  default: '0'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaylistDetailResponse'
+
+  /weapi/v1/radio/get:
+    post:
+      tags:
+        - playlist
+      summary: Get personal radio
+      description: Get songs from personal radio (private FM)
+      operationId: getRadio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                imageFm:
+                  type: string
+                  description: Unknown parameter
+                  default: '0'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RadioResponse'
+
+  /weapi/playlist/manipulate/tracks:
+    post:
+      tags:
+        - playlist
+      summary: Add or remove tracks from playlist
+      description: Add or remove songs from a playlist
+      operationId: playlistAddOrDel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                op:
+                  type: string
+                  description: 'Operation: add or del'
+                  enum: [add, del]
+                pid:
+                  type: integer
+                  format: int64
+                  description: Playlist ID
+                trackIds:
+                  type: string
+                  description: JSON array of track IDs
+                imme:
+                  type: boolean
+                  description: Immediate upload
+                  default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaylistAddOrDelResponse'
+
+  /weapi/v1/album/{id}:
+    post:
+      tags:
+        - album
+      summary: Get album details
+      description: Get detailed information about an album including all songs
+      operationId: getAlbum
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Album ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumResponse'
+
+  /weapi/v1/artist/songs:
+    post:
+      tags:
+        - artist
+      summary: Get artist songs
+      description: Get all songs by an artist with pagination
+      operationId: getArtistSongs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                  description: Artist ID
+                private_cloud:
+                  type: string
+                  description: Include private cloud songs
+                  default: 'true'
+                work_type:
+                  type: integer
+                  description: Work type
+                  default: 1
+                order:
+                  type: string
+                  description: 'Sort order: hot or time'
+                  enum: [hot, time]
+                  default: hot
+                offset:
+                  type: integer
+                  description: Offset for pagination
+                  default: 0
+                limit:
+                  type: integer
+                  description: Number of songs to return
+                  default: 100
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtistSongsResponse'
+
+  /weapi/song/lyric:
+    post:
+      tags:
+        - lyric
+      summary: Get song lyrics
+      description: Get lyrics for a song
+      operationId: getLyric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                  description: Song ID
+                tv:
+                  type: integer
+                  description: Translation version
+                  default: -1
+                lv:
+                  type: integer
+                  description: Lyric version
+                  default: -1
+                rv:
+                  type: integer
+                  description: Romanization version
+                  default: -1
+                kv:
+                  type: integer
+                  description: Unknown version
+                  default: -1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LyricResponse'
+
+  /weapi/song/lyric/v1:
+    post:
+      tags:
+        - lyric
+      summary: Get song lyrics (v1)
+      description: Get lyrics for a song with word-by-word support
+      operationId: getLyricV1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                  description: Song ID
+                cp:
+                  type: boolean
+                  description: Unknown parameter
+                  default: false
+                tv:
+                  type: integer
+                  description: Translation version
+                  default: 0
+                lv:
+                  type: integer
+                  description: Lyric version
+                  default: 0
+                rv:
+                  type: integer
+                  description: Romanization version
+                  default: 0
+                kv:
+                  type: integer
+                  description: Unknown version
+                  default: 0
+                yv:
+                  type: integer
+                  description: Unknown version
+                  default: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LyricV1Response'
+
+  /weapi/w/v1/user/detail/{userId}:
+    post:
+      tags:
+        - user
+      summary: Get user details
+      description: Get detailed information about a user
+      operationId: getUserDetail
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: User ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetailResponse'
+
+  /weapi/w/nuser/account/get:
+    post:
+      tags:
+        - login
+      summary: Get current user info
+      description: Get information about the currently logged in user
+      operationId: getUserInfo
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserInfoResponse'
+
+  /weapi/sms/captcha/sent:
+    post:
+      tags:
+        - login
+      summary: Send SMS verification code
+      description: Send SMS verification code to phone number. Limited to 5 times per 24h.
+      operationId: sendSms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cellphone:
+                  type: string
+                  description: Phone number
+                ctcode:
+                  type: integer
+                  description: Country code
+                  default: 86
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendSmsResponse'
+
+  /weapi/login/token/refresh:
+    post:
+      tags:
+        - login
+      summary: Refresh login token
+      description: Refresh the login token
+      operationId: refreshToken
+      responses:
+        '200':
+          description: |
+            Response bizCode:
+            - 201: Refresh successful
+            - 400: Refresh failed
+            - 504: Token expired or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshResponse'
+
+  /weapi/v1/discovery/new/songs:
+    post:
+      tags:
+        - top
+      summary: Get new songs chart
+      description: Get the new songs chart (new releases)
+      operationId: getTopNewSongs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                areaId:
+                  type: integer
+                  description: |
+                    Area filter:
+                    - 0: All
+                    - 7: Chinese
+                    - 8: Japanese
+                    - 16: Korean
+                    - 96: Western
+                  default: 0
+                total:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopNewSongsResponse'
+
+  /api/toplist:
+    post:
+      tags:
+        - top
+      summary: Get all top lists
+      description: Get all available top charts (surge, hot, new, original, etc.)
+      operationId: getTopList
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopListResponse'
+
+  /weapi/v3/discovery/recommend/songs:
+    post:
+      tags:
+        - recommend
+      summary: Get daily recommended songs
+      description: Get personalized daily song recommendations
+      operationId: getRecommendSongs
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendSongsResponse'
+
+components:
+  schemas:
+    BaseResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: Response code (200 = success)
+        message:
+          type: string
+          description: Error message if any
+
+    SearchDefaultResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                refreshTime:
+                  type: integer
+                keywords:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      showKeyword:
+                        type: string
+                      realkeyword:
+                        type: string
+                      searchType:
+                        type: integer
+
+    Song:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Song ID
+        name:
+          type: string
+          description: Song name
+        dt:
+          type: integer
+          format: int64
+          description: Duration in milliseconds
+        fee:
+          type: integer
+          description: |
+            Fee type:
+            - 0: Free
+            - 1: Pay per song (2 yuan)
+            - 4: Pay for album
+            - 8: Low quality free
+        mv:
+          type: integer
+          format: int64
+          description: MV ID if available
+        publishTime:
+          type: integer
+          format: int64
+          description: Publish timestamp in milliseconds
+        ar:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artist'
+        al:
+          $ref: '#/components/schemas/Album'
+
+    Artist:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        picUrl:
+          type: string
+        alias:
+          type: array
+          items:
+            type: string
+
+    Album:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        picUrl:
+          type: string
+        publishTime:
+          type: integer
+          format: int64
+
+    Quality:
+      type: object
+      properties:
+        br:
+          type: integer
+          format: int64
+          description: Bitrate
+        fid:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        vd:
+          type: number
+          format: float
+
+    SongDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            songs:
+              type: array
+              items:
+                $ref: '#/components/schemas/Song'
+            privileges:
+              type: array
+              items:
+                type: object
+
+    SongMusicQualityResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                songId:
+                  type: integer
+                  format: int64
+                h:
+                  $ref: '#/components/schemas/Quality'
+                m:
+                  $ref: '#/components/schemas/Quality'
+                l:
+                  $ref: '#/components/schemas/Quality'
+                sq:
+                  $ref: '#/components/schemas/Quality'
+                hr:
+                  $ref: '#/components/schemas/Quality'
+
+    SongPlayerResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  url:
+                    type: string
+                    description: Streaming URL (expires in ~20 min)
+                  br:
+                    type: integer
+                    format: int64
+                  size:
+                    type: integer
+                    format: int64
+                  md5:
+                    type: string
+                  type:
+                    type: string
+                    description: File type (mp3, FLAC)
+                  level:
+                    type: string
+                    description: Quality level
+                  time:
+                    type: integer
+                    format: int64
+                    description: Duration in ms
+
+    SongPlayerV1Response:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  url:
+                    type: string
+                  br:
+                    type: integer
+                    format: int64
+                  size:
+                    type: integer
+                    format: int64
+                  md5:
+                    type: string
+                  type:
+                    type: string
+                  level:
+                    type: string
+                  expi:
+                    type: integer
+                    format: int64
+                    description: Expiration time in seconds (1200)
+                  time:
+                    type: integer
+                    format: int64
+
+    SongDownloadUrlResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                url:
+                  type: string
+                br:
+                  type: integer
+                  format: int64
+                size:
+                  type: integer
+                  format: int64
+                md5:
+                  type: string
+                code:
+                  type: integer
+                  description: |
+                    Status code:
+                    - 200: OK
+                    - -103: Cannot download
+                    - -105: Need to purchase album
+                    - -110: Song unavailable
+
+    SongDownloadUrlV1Response:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                url:
+                  type: string
+                br:
+                  type: integer
+                  format: int64
+                size:
+                  type: integer
+                  format: int64
+                md5:
+                  type: string
+                level:
+                  type: string
+
+    PlaylistResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            version:
+              type: string
+            more:
+              type: boolean
+            playlist:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  coverImgUrl:
+                    type: string
+                  trackCount:
+                    type: integer
+                  playCount:
+                    type: integer
+                    format: int64
+                  userId:
+                    type: integer
+                    format: int64
+
+    PlaylistDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            playlist:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                name:
+                  type: string
+                coverImgUrl:
+                  type: string
+                trackCount:
+                  type: integer
+                playCount:
+                  type: integer
+                  format: int64
+                description:
+                  type: string
+                tracks:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Song'
+                trackIds:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+
+    RadioResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  duration:
+                    type: integer
+                  artists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Artist'
+                  album:
+                    $ref: '#/components/schemas/Album'
+
+    PlaylistAddOrDelResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            trackIds:
+              type: string
+              description: Added track IDs as JSON array string
+            count:
+              type: integer
+              format: int64
+              description: Playlist track count after operation
+            cloudCount:
+              type: integer
+              format: int64
+              description: Cloud track count
+
+    AlbumResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            resourceState:
+              type: boolean
+            songs:
+              type: array
+              items:
+                $ref: '#/components/schemas/Song'
+            album:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                name:
+                  type: string
+                picUrl:
+                  type: string
+                publishTime:
+                  type: integer
+                  format: int64
+                description:
+                  type: string
+                company:
+                  type: string
+                artist:
+                  $ref: '#/components/schemas/Artist'
+                size:
+                  type: integer
+
+    ArtistSongsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            more:
+              type: boolean
+            total:
+              type: integer
+              format: int64
+            songs:
+              type: array
+              items:
+                $ref: '#/components/schemas/Song'
+
+    LyricResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            lrc:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+                  description: LRC format lyrics
+            tlyric:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+                  description: Translated lyrics
+            romalrc:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+                  description: Romanized lyrics
+
+    LyricV1Response:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            lrc:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+            tlyric:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+            romalrc:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+            yrc:
+              type: object
+              properties:
+                version:
+                  type: integer
+                lyric:
+                  type: string
+                  description: Word-by-word lyrics
+            pureMusic:
+              type: boolean
+
+    UserDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        level:
+          type: integer
+        listenSongs:
+          type: integer
+        userPoint:
+          type: object
+          properties:
+            balance:
+              type: integer
+              description: Cloud points balance
+        profile:
+          type: object
+          properties:
+            userId:
+              type: integer
+              format: int64
+            nickname:
+              type: string
+            avatarUrl:
+              type: string
+            signature:
+              type: string
+            followeds:
+              type: integer
+            follows:
+              type: integer
+            playlistCount:
+              type: integer
+
+    GetUserInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            account:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                userName:
+                  type: string
+                vipType:
+                  type: integer
+                createTime:
+                  type: integer
+                  format: int64
+            profile:
+              type: object
+              properties:
+                userId:
+                  type: integer
+                  format: int64
+                nickname:
+                  type: string
+                avatarUrl:
+                  type: string
+                vipType:
+                  type: integer
+
+    SendSmsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: boolean
+
+    TokenRefreshResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            bizCode:
+              type: string
+
+    TopNewSongsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  duration:
+                    type: integer
+                  album:
+                    $ref: '#/components/schemas/Album'
+                  artists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Artist'
+
+    TopListResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            list:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  coverImgUrl:
+                    type: string
+                  description:
+                    type: string
+                  trackCount:
+                    type: integer
+                  playCount:
+                    type: integer
+                    format: int64
+                  updateFrequency:
+                    type: string
+
+    RecommendSongsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                dailySongs:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: '#/components/schemas/Song'
+                      - type: object
+                        properties:
+                          reason:
+                            type: string
+                            description: Recommendation reason
+                          recommendReason:
+                            type: string
+                recommendReasons:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      songId:
+                        type: integer
+                        format: int64
+                      reason:
+                        type: string
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: MUSIC_U
+      description: Login cookie obtained from authentication
