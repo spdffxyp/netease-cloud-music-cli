@@ -338,7 +338,7 @@ def playlist(
     # Download all tracks
     downloader = Downloader(
         client,
-        output_dir=output or './downloads',
+        output_dir=output or '.',
         quality=quality
     )
 
@@ -411,7 +411,7 @@ def album(
     # Download all tracks
     downloader = Downloader(
         client,
-        output_dir=output or './downloads',
+        output_dir=output or '.',
         quality=quality
     )
 

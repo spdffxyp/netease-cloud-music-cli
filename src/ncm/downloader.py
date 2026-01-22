@@ -65,7 +65,7 @@ class Downloader:
     def __init__(
         self,
         client: NCMClient,
-        output_dir: str = "./downloads",
+        output_dir: str = ".",
         quality: str = "exhigh",
         filename_template: str = "{artist} - {title}",
         overwrite: bool = False
