@@ -10,6 +10,20 @@ from typing import Dict, List, Optional, Any
 
 import requests
 
+musicdl_client = None
+try:
+    from musicdl.modules.sources import NeteaseMusicClient
+    from musicdl.modules.utils.neteaseutils import MUSIC_QUALITIES, EapiCryptoUtils
+    from musicdl.modules.utils import safeextractfromdict, resp2json, SongInfo, legalizestring, cleanlrc
+    import json
+    import random
+    import copy
+    import pickle
+    from typing import Tuple, Optional, Dict, Any
+    musicdl_client = NeteaseMusicClient()
+except ImportError:
+    musicdl_client = False
+
 from .crypto import weapi_encrypt, eapi_encrypt
 from .models import Song, SongUrl, Playlist, SearchResult, Lyric, Album, Artist
 
@@ -387,6 +401,180 @@ class NCMClient:
             return None
 
         return SongUrl.from_dict(data)
+
+    def get_download_url_musicdl(self, song_id: str, client: Optional['NeteaseMusicClient'] = None,
+                                    request_overrides: dict = None) \
+            -> Tuple[Optional[SongInfo], Optional[SongUrl]]:
+        """
+        根据 song_id 获取 SongInfo 和 SongUrl
+        """
+        if not musicdl_client:
+            return None, None
+        # 1. 初始化客户端
+        if not client:
+            client = NeteaseMusicClient()
+
+        # 2. 构造一个模拟的搜索结果，只需包含 ID
+        # 因为 _parsewiththirdpartapis 和 _search 内部逻辑主要依赖 search_result['id']
+        search_result_mock = {
+            'id': str(song_id),
+            'name': 'Unknown',  # 占位，解析后会更新
+            'ar': [{'name': 'Unknown'}],
+            'al': {'name': 'Unknown', 'picUrl': ''},
+            'dt': 0
+        }
+
+        # 3. 尝试获取歌曲信息 (SongInfo)
+        # 我们优先尝试调用客户端的私有解析方法，这些方法会尝试多个 API 源（如 cgg, bugpk, xiaoqin）
+        # 如果第三方 API 失败，我们可以参考 _search 里的逻辑
+
+        song_info = None
+        request_overrides = request_overrides or {}
+
+        # 模拟 progress 对象以适配 _search 的调用（如果需要调用 _search）
+        # 但由于我们要的是特定 ID，直接调用内部解析链更精准
+        try:
+            # 尝试通过第三方 API 获取高质量链接（含 Flac）
+            song_info = client._parsewiththirdpartapis(search_result_mock, request_overrides)
+            # print(song_info)
+            # song_info = None
+
+            # 如果第三方没搜到有效的 url，尝试用官方 EAPI (对应 _search 里的逻辑)
+            if not (song_info and song_info.with_valid_download_url):
+                for quality in MUSIC_QUALITIES:
+                    params = {
+                        'ids': [song_id],
+                        'level': quality,
+                        'encodeType': 'flac',
+                        'header': json.dumps({
+                            "os": "pc",
+                            "appver": "", "osver": "",
+                            "deviceId": "pyncm!",
+                            "requestId": str(random.randrange(20000000, 30000000))
+                        })
+                    }
+                    if quality == 'sky':
+                        params['immerseType'] = 'c51'
+
+                    # 加密参数
+                    encrypted_params = EapiCryptoUtils.encryptparams(
+                        url='https://interface3.music.163.com/eapi/song/enhance/player/url/v1',
+                        payload=params
+                    )
+
+                    cookies = {"os": "pc",
+                               "appver": "",
+                               "osver": "",
+                               "deviceId": "pyncm!"
+                               }
+                    cookies.update(client.default_cookies or {})
+
+                    resp = client.post(
+                        'https://interface3.music.163.com/eapi/song/enhance/player/url/v1',
+                        data={"params": encrypted_params},
+                        cookies=cookies
+                    )
+                    download_result = resp2json(resp)
+                    # print(download_result)
+                    download_url: str = safeextractfromdict(download_result, ['data', 0, 'url'], '')
+                    if not download_url:
+                        continue
+
+                    song_info = SongInfo(
+                        raw_data={
+                            'search': {},
+                            'download': download_result,
+                            'lyric': {},
+                            'quality': quality
+                        },
+                        source='NeteaseMusicClient',
+                        song_name='',
+                        singers='',
+                        album='',
+                        ext=download_url.split('?')[0].split('.')[-1],
+                        file_size='NULL',
+                        identifier=song_id,
+                        duration_s=0,
+                        duration=0,
+                        lyric=None,
+                        cover_url=None,
+                        download_url=download_url,
+                        download_url_status=client.audio_link_tester.test(download_url, request_overrides),
+                    )
+                    song_info.download_url_status['probe_status'] = client.audio_link_tester.probe(song_info.download_url, request_overrides)
+                    song_info.file_size = song_info.download_url_status['probe_status']['file_size']
+                    song_info.ext = song_info.download_url_status['probe_status']['ext'] if (song_info.download_url_status['probe_status']['ext'] and song_info.download_url_status['probe_status']['ext'] != 'NULL') else song_info.ext
+
+                    if song_info.with_valid_download_url:
+                        break
+            # --lyric results
+            data = {'id': song_id, 'cp': 'false', 'tv': '0', 'lv': '0', 'rv': '0', 'kv': '0', 'yv': '0',
+                    'ytv': '0', 'yrv': '0'}
+            try:
+                resp = client.post('https://interface3.music.163.com/api/song/lyric', data=data, **request_overrides)
+                resp.raise_for_status()
+                lyric_result: dict = resp2json(resp)
+                lyric = safeextractfromdict(lyric_result, ['lrc', 'lyric'], 'NULL')
+                lyric = 'NULL' if not lyric else cleanlrc(lyric)
+            except Exception as e:
+                print(f"获取歌词 {song_id} 失败: {e}")
+                lyric_result, lyric = dict(), 'NULL'
+            song_info.raw_data['lyric'] = lyric_result
+            song_info.lyric = lyric
+        except Exception as e:
+            print(f"解析歌曲 {song_id} 失败: {e}")
+            return None, None
+
+        if not song_info or not song_info.download_url:
+            return None, None
+
+        # 4. 构造 SongUrl
+        # 从 raw_data 中提取详细的比特率、文件大小等信息
+        download_data = song_info.raw_data.get('download', {})
+
+        # 不同的 API 返回结构不同，这里做一个兼容处理
+        if 'data' in download_data and isinstance(download_data['data'], list):
+            # 官方 EAPI 格式
+            main_data = download_data['data'][0]
+            song_url = SongUrl(
+                id=int(song_id),
+                url=song_info.download_url,
+                bitrate=main_data.get('br', 0),
+                size=main_data.get('size', 0),
+                type=main_data.get('type', song_info.ext),
+                level=main_data.get('level', song_info.raw_data.get('quality', 'standard')),
+                md5=main_data.get('md5')
+            )
+        elif 'data' in download_data and isinstance(download_data['data'], dict):
+            # 第三方 API 格式 (如 cenguigui)
+            main_data = download_data['data']
+            # 尝试转换 size 字符串为字节 (如果是 "167.61MB")
+            raw_size = main_data.get('size', '0')
+            try:
+                size_val = int(float(str(raw_size).lower().replace('mb', '').strip()) * 1024 * 1024)
+            except:
+                size_val = 0
+
+            song_url = SongUrl(
+                id=int(song_id),
+                url=song_info.download_url,
+                bitrate=0,  # 第三方 API 有时不提供码率
+                size=size_val,
+                type=song_info.ext,
+                level=song_info.raw_data.get('quality', 'standard')
+            )
+        else:
+            # 保底逻辑
+            song_url = SongUrl(
+                id=int(song_id),
+                url=song_info.download_url,
+                bitrate=0,
+                size=0,
+                type=song_info.ext,
+                level=song_info.raw_data.get('quality', 'standard')
+            )
+
+        return song_info, song_url
 
     # ==================== Lyrics API ====================
 
