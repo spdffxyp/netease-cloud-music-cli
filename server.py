@@ -1,24 +1,27 @@
 import logging
+import threading
 import os
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from pathlib import Path
+from flask import Flask, request, jsonify, send_from_directory
 from ncm.cli import NCMClient
-
-# 初始化 Flask 应用
+from ncm.downloader import Downloader  # 确保你的项目结构可以导入
 from ncm.models import SongUrl
 
-app = Flask(__name__)
-
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --- 配置部分 ---
-# 使用你提供的 Cookie 字符串
+# --- 配置 ---
+DOWNLOAD_DIR = "downloaded_music"
+SERVER_IP = "192.168.2.99"  # 替换为你的服务器实际 IP
+SERVER_PORT = 5000
+# 使用你的 Cookie
 load_dotenv()  # 加载 .env 文件
 COOKIE_DATA = os.getenv("NCM_COOKIE")
 
-# 初始化 NCM 客户端
+# 初始化 Flask
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 初始化 NCM 客户端和下载器
 try:
     client = NCMClient(cookie=COOKIE_DATA)
     # 验证一下用户信息
@@ -27,8 +30,16 @@ try:
         logger.info(f"登录成功: {user_info['profile']['nickname']} (UID: {user_info['profile']['userId']})")
     else:
         logger.warning("Cookie 可能已过期或无效，部分功能可能受限。")
+    # 下载模板为仅使用 ID，方便后续检索
+    downloader = Downloader(
+        client,
+        output_dir=DOWNLOAD_DIR,
+        filename_template="{id}",
+        quality="exhigh"
+    )
+    logger.info("NCM Client and Downloader initialized.")
 except Exception as e:
-    logger.error(f"客户端初始化失败: {e}")
+    logger.error(f"Initialization failed: {e}")
 
 
 # --- 辅助函数 ---
@@ -46,7 +57,34 @@ def serialize(obj):
     return obj
 
 
-# --- 路由接口 ---
+def start_background_download(song_ids):
+    """后台线程下载歌曲"""
+
+    def run():
+        logger.info(f"Starting background download for {len(song_ids)} songs...")
+        # 转换 ID 为 int 列表
+        ids = [int(sid) for sid in song_ids]
+        downloader.download_songs(ids, show_progress=False)
+        logger.info("Background download task finished.")
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def find_local_file(song_id):
+    """在下载目录寻找对应的文件 (支持 mp3 和 flac)"""
+    for ext in ['mp3', 'flac']:
+        file_path = Path(DOWNLOAD_DIR) / f"{song_id}.{ext}"
+        if file_path.exists():
+            return f"{song_id}.{ext}"
+    return None
+
+
+ --- 路由接口 ---
+@app.route('/stream/<filename>')
+def serve_downloaded_file(filename):
+    """供播放器下载/流式播放本地文件的接口"""
+    return send_from_directory(DOWNLOAD_DIR, filename)
+
 
 @app.route('/', methods=['GET'])
 def index():
@@ -89,22 +127,35 @@ def get_song_url():
     示例: /song/url?id=210049&level=lossless
     """
     song_id = request.args.get('id')
-    level = request.args.get('level', 'lossless')  # standard, higher, exhigh, lossless, hires
+    level = request.args.get('level', 'exhigh')
 
     if not song_id:
-        return jsonify({"code": 400, "error": "缺少歌曲ID 'id'"}), 400
+        return jsonify({"code": 400, "error": "Missing id"}), 400
 
+    # 1. 检查本地是否存在
+    local_filename = find_local_file(song_id)
+    if local_filename:
+        local_url = f"http://{SERVER_IP}:{SERVER_PORT}/stream/{local_filename}"
+        logger.info(f"Serving local file for song {song_id}")
+        # 构造一个符合 SongUrl 模型的返回格式
+        return jsonify({
+            "code": 200,
+            "data": [{
+                "id": int(song_id),
+                "url": local_url,
+                "local": True
+            }]
+        })
+
+    # 2. 本地没有，走原逻辑
     try:
-        # 注意：get_download_url 接收 int，但 eapi 可能效果更好
-        # 这里优先尝试 eapi 接口，因为它通常对 VIP 歌曲支持更好
         url_info = client.get_song_url_eapi([int(song_id)], level=level)
-
-        if not url_info:
+        if not url_info or not url_info[0].url:
             # 如果 EAPI 失败，尝试普通接口
             url_info = client.get_song_url([int(song_id)], level=level)
 
         if not url_info:
-            return jsonify({"code": 404, "error": "无法获取链接或无权访问"}), 404
+            return jsonify({"code": 404, "error": "URL not found"}), 404
 
         return jsonify({"code": 200, "data": serialize(url_info)})
     except Exception as e:
@@ -133,25 +184,23 @@ def get_song_detail():
 
 
 @app.route('/personalFM', methods=['GET'])
-def get_personal_fm():
+def get_personal_fm_v2():
     """
     获取personal FM
     """
     try:
-        personal_fm_songs = client.get_personal_fm()
+        songs = client.get_personal_fm()
+        start_background_download([s.id for s in songs])
+
         response = []
-        for song in personal_fm_songs:
-            song_url = client.get_song_url_eapi([song.id])
-            if isinstance(song_url, list) and len(song_url) > 0 and isinstance(song_url[0], SongUrl) and song_url[0].url:
-                response.append(
-                    {
-                        "id": str(song.id),
-                        "title": song.name,
-                        "artist": song.artist_names,
-                        "duration": int(song.duration/1000),
-                        "url": song_url[0].url
-                    }
-                )
+        for song in songs:
+            response.append({
+                "id": str(song.id),
+                "title": song.name,
+                "artist": song.artist_names,
+                "duration": int(song.duration / 1000),
+                "url": ""
+            })
         return jsonify(response)
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)}), 500
@@ -185,49 +234,38 @@ def get_red_heart_songs():
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)}), 500
 
-
 @app.route('/playList', methods=['GET'])
 def get_play_list_songs():
-    """
-    获取personal FM
-    """
     try:
-        _id = request.args.get('id', "")
-        try:
-            start = int(request.args.get('start', 0))
-        except ValueError:
-            start = 0
-        try:
-            limit = int(request.args.get('limit', 10))
-        except ValueError:
-            limit = 10
-
-        if _id == "":
-            _id = "FM"
-
-        response = []
+        _id = request.args.get('id', "FM")
+        start = int(request.args.get('start', 0))
+        limit = int(request.args.get('limit', 10))
 
         if _id.upper() == "REDHEART":
-            play_list = client.get_red_heart_playlist()
-            if play_list and play_list.id:
-                songs = client.get_playlist_tracks(play_list.id)
+            pl = client.get_red_heart_playlist()
+            songs = client.get_playlist_tracks(pl.id) if pl else []
         elif _id.isnumeric():
             songs = client.get_playlist_tracks(int(_id))
-        else:  # FM or other
+        else:
             songs = client.get_personal_fm()
             start = 0
 
-        for song in songs:
-            response.append(
-                {
-                    "id": str(song.id),
-                    "title": song.name,
-                    "artist": song.artist_names,
-                    "duration": int(song.duration/1000),
-                    "url": ""
-                }
-            )
-        response = response[start: start+limit]
+        # 分页
+        paged_songs = songs[start: start + limit]
+
+        # 触发异步下载任务
+        song_ids = [s.id for s in paged_songs]
+        start_background_download(song_ids)
+
+        response = []
+        for song in paged_songs:
+            response.append({
+                "id": str(song.id),
+                "title": song.name,
+                "artist": song.artist_names,
+                "duration": int(song.duration / 1000),
+                "url": ""  # 客户端会再次请求 /song/url 获取
+            })
         return jsonify(response)
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)}), 500
@@ -246,6 +284,8 @@ def user_info():
 
 
 if __name__ == '__main__':
+    # 确保下载目录存在
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     # 启动服务器，默认端口 5000
-    print("服务已启动: http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print("服务已启动: http://0.0.0.0:5000")
+    app.run(host='0.0.0.0', port=SERVER_PORT, debug=False)
