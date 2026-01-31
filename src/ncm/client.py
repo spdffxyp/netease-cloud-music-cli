@@ -98,6 +98,8 @@ class NCMClient:
         self.session = requests.Session()
         self.session.headers.update(self.DEFAULT_HEADERS)
         self.timeout = timeout
+        self.user_info = {}
+        self.personal_playlist = []
 
         # Load cookie from file if specified
         if cookie_file and os.path.exists(cookie_file):
@@ -779,8 +781,8 @@ class NCMClient:
         """
         self.session.headers['Cookie'] = cookie
         # Verify by checking user info
-        user_info = self.get_user_info()
-        return user_info is not None and user_info.get('code') == 200
+        self.user_info = self.get_user_info()
+        return self.user_info is not None and self.user_info.get('code') == 200
 
     def get_cookies(self) -> Dict[str, str]:
         """Get current session cookies as dictionary."""
@@ -807,12 +809,15 @@ class NCMClient:
         Returns:
             User info dictionary or None if not authenticated
         """
+        if self.user_info:
+            return self.user_info
+
         response = self._request('/weapi/w/nuser/account/get', {})
 
         if response.get('code') != 200:
-            return None
-
-        return response
+            return {}
+        self.user_info = response
+        return self.user_info
 
     def get_recommend_songs(self) -> List[Song]:
         """
@@ -842,3 +847,63 @@ class NCMClient:
             return []
 
         return [Song.from_dict(s) for s in response.get('data', [])]
+
+    def _get_cookie_value(self, key: str) -> str:
+        cookie_str = self.session.headers.get('Cookie')
+        if not cookie_str:
+            return ''
+        for segment in cookie_str.split(';'):
+            kv = segment.split('=')
+            if 2 < len(kv):
+                _value = '='.join(kv[1:])
+            elif 2 == len(kv):
+                _value = kv[1]
+            else:
+                return ''
+            _key = kv[0]
+            if _key == key:
+                return _value
+        return ''
+
+    def update_personal_playlist(self) -> List[Playlist]:
+        """
+        Get personal play lists (requires authentication).
+
+        Returns:
+            List of Playlist objects
+        """
+        self.personal_playlist = []
+        user_info = self.get_user_info() or {}
+        user_id = user_info.get('account', {}).get('id', -1)
+        if -1 == user_id:
+            return self.personal_playlist
+        data = {
+            "uid": str(user_id),
+            "wordwrap": "7",
+            "offset": "0",
+            "total": "true",
+            "limit": "36",
+            "csrf_token": self._get_cookie_value("__csrf")
+        }
+        response = self._request('/weapi/user/playlist', data, use_interface=False)
+        if response.get('code') != 200:
+            return self.personal_playlist
+
+        self.personal_playlist = [Playlist.from_dict(s) for s in response.get('playlist', [])]
+        return self.personal_playlist
+
+    def get_red_heart_playlist(self) -> Optional[Playlist]:
+        if not self.personal_playlist:
+            self.update_personal_playlist()
+
+        _name = self.user_info.get('profile', {}).get('nickname')
+        if not _name:
+            return None
+
+        _name += "喜欢的音乐"
+        for _play_list in self.personal_playlist:
+            if _play_list.name == _name:
+                return _play_list
+        if len(self.personal_playlist) > 0:
+            return self.personal_playlist[0]
+        return None

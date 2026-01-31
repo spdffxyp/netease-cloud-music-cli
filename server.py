@@ -94,11 +94,11 @@ def get_song_url():
     try:
         # 注意：get_download_url 接收 int，但 eapi 可能效果更好
         # 这里优先尝试 eapi 接口，因为它通常对 VIP 歌曲支持更好
-        url_info = client.get_download_url_eapi(int(song_id), level=level)
+        url_info = client.get_song_url_eapi([int(song_id)], level=level)
 
         if not url_info:
             # 如果 EAPI 失败，尝试普通接口
-            url_info = client.get_download_url(int(song_id), level=level)
+            url_info = client.get_song_url([int(song_id)], level=level)
 
         if not url_info:
             return jsonify({"code": 404, "error": "无法获取链接或无权访问"}), 404
@@ -142,12 +142,89 @@ def get_personal_fm():
             if isinstance(song_url, list) and len(song_url) > 0 and isinstance(song_url[0], SongUrl) and song_url[0].url:
                 response.append(
                     {
+                        "id": str(song.id),
                         "title": song.name,
                         "artist": song.artist_names,
                         "duration": int(song.duration/1000),
                         "url": song_url[0].url
                     }
                 )
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"code": 500, "error": str(e)}), 500
+
+
+@app.route('/redHeart', methods=['GET'])
+def get_red_heart_songs():
+    """
+    获取personal FM
+    """
+    try:
+        start = request.args.get('start')
+        limit = int(request.args.get('limit', 10))
+
+        response = []
+        play_list = client.get_red_heart_playlist()
+        if play_list and play_list.id:
+            songs = client.get_playlist_tracks(play_list.id)
+            for song in songs:
+                response.append(
+                    {
+                        "id": str(song.id),
+                        "title": song.name,
+                        "artist": song.artist_names,
+                        "duration": int(song.duration/1000),
+                        "url": ""
+                    }
+                )
+        response = response[start: start+limit]
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"code": 500, "error": str(e)}), 500
+
+
+@app.route('/playList', methods=['GET'])
+def get_play_list_songs():
+    """
+    获取personal FM
+    """
+    try:
+        _id = request.args.get('id', "")
+        try:
+            start = int(request.args.get('start', 0))
+        except ValueError:
+            start = 0
+        try:
+            limit = int(request.args.get('limit', 10))
+        except ValueError:
+            limit = 10
+
+        if _id == "":
+            _id = "FM"
+
+        response = []
+
+        if _id.upper() == "REDHEART":
+            play_list = client.get_red_heart_playlist()
+            if play_list and play_list.id:
+                songs = client.get_playlist_tracks(play_list.id)
+        elif _id.isnumeric():
+            songs = client.get_playlist_tracks(int(_id))
+        else:  # FM or other
+            songs = client.get_personal_fm()
+            start = 0
+
+        for song in songs:
+            response.append(
+                {
+                    "id": str(song.id),
+                    "title": song.name,
+                    "artist": song.artist_names,
+                    "duration": int(song.duration/1000),
+                    "url": ""
+                }
+            )
+        response = response[start: start+limit]
         return jsonify(response)
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)}), 500
