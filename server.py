@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # --- 配置部分 ---
 # 使用你提供的 Cookie 字符串
-COOKIE_DATA = """***REMOVED***"""
+COOKIE_DATA = ""
 
 # 初始化 NCM 客户端
 try:
