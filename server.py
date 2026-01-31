@@ -1,4 +1,6 @@
 import logging
+import os
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from ncm.cli import NCMClient
 
@@ -13,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 # --- 配置部分 ---
 # 使用你提供的 Cookie 字符串
-COOKIE_DATA = ""
+load_dotenv()  # 加载 .env 文件
+COOKIE_DATA = os.getenv("NCM_COOKIE")
 
 # 初始化 NCM 客户端
 try:
