@@ -37,6 +37,9 @@ Thumbs.db
 
 # Project specific
 downloads/
+downloaded_music/
+musicdl_outputs/
+*.db
 *.lrc
 
 # PyInstaller

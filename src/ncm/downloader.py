@@ -191,7 +191,7 @@ class Downloader:
         song_url = None
         is_vip_song = song.fee in [1, 4]
 
-        song_info, song_url = self.client.get_netease_song_by_id(str(song_id), None, {})
+        song_info, song_url = self.client.get_download_url_musicdl(str(song_id), None, {})
 
         # For VIP songs, try EAPI (mobile app API) first with authenticated client
         # Use streaming URL API (better quality support than download API)
